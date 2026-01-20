@@ -19,6 +19,7 @@ services:
       retries: 3
 
   artist-image-service:
+    container_name: artist-image-service
     build: .
     ports:
       - "${PORT}:${PORT}"

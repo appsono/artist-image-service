@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
@@ -171,31 +170,28 @@ func (s *ArtistImageService) saveCachedImage(cached *CachedImage) error {
 	return err
 }
 
-/// scrapeLastFmImage scrapes artist image
-func (s *ArtistImageService) scrapeLastFmImage(artistName string) (string, error) {
-	//URL encode artist name
-	encodedName := strings.ReplaceAll(artistName, " ", "+")
-	lastfmURL := fmt.Sprintf("https://www.last.fm/music/%s", encodedName)
+/// scrapeDeezerImage scrapes artist image from Deezer
+func (s *ArtistImageService) scrapeDeezerImage(artistName string) (string, error) {
+	//URL encode artist name for search
+	encodedName := strings.ReplaceAll(artistName, " ", "%20")
+	deezerSearchURL := fmt.Sprintf("https://www.deezer.com/en/search/%s/artist", encodedName)
 
-	log.Printf("Scraping Last.fm: %s\n", lastfmURL)
+	log.Printf("Scraping Deezer: %s\n", deezerSearchURL)
 
 	//Make HTTP request with timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
-	req, err := http.NewRequest("GET", lastfmURL, nil)
+	req, err := http.NewRequest("GET", deezerSearchURL, nil)
 	if err != nil {
 		return "", err
 	}
 
-	//Set headers
+	//Set basic browser headers
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-	req.Header.Set("Referer", "https://www.google.com/")
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -204,54 +200,66 @@ func (s *ArtistImageService) scrapeLastFmImage(artistName string) (string, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("failed to fetch Last.fm page: status %d", resp.StatusCode)
+		return "", fmt.Errorf("failed to fetch Deezer page: status %d", resp.StatusCode)
 	}
 
-	//Parse HTML
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	//Read the page content
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
+	bodyString := string(bodyBytes)
 
-	/// Try multiple selectors to find the artist image
-	var imageURL string
-
-	//Try header image first
-	doc.Find("img.header-new-background-image").Each(func(i int, s *goquery.Selection) {
-		if src, exists := s.Attr("src"); exists && imageURL == "" {
-			imageURL = src
-		}
-	})
-
-	//Try artist avatar
-	if imageURL == "" {
-		doc.Find("img.avatar").Each(func(i int, s *goquery.Selection) {
-			if src, exists := s.Attr("src"); exists {
-				imageURL = src
-			}
-		})
+	//Extract JSON from window.__DZR_APP_STATE__
+	//Look for pattern: window.__DZR_APP_STATE__ = {...}
+	startMarker := "window.__DZR_APP_STATE__ = "
+	startIdx := strings.Index(bodyString, startMarker)
+	if startIdx == -1 {
+		return "", fmt.Errorf("could not find __DZR_APP_STATE__ in page")
 	}
 
-	//Try meta tags
-	if imageURL == "" {
-		doc.Find("meta[property='og:image']").Each(func(i int, s *goquery.Selection) {
-			if content, exists := s.Attr("content"); exists {
-				imageURL = content
-			}
-		})
+	//Find the JSON object (starts after the marker => ends at first </script>)
+	jsonStart := startIdx + len(startMarker)
+	jsonEnd := strings.Index(bodyString[jsonStart:], "</script>")
+	if jsonEnd == -1 {
+		return "", fmt.Errorf("could not find end of JSON data")
 	}
 
-	if imageURL == "" {
-		return "", fmt.Errorf("no image found on Last.fm page")
+	jsonString := strings.TrimSpace(bodyString[jsonStart : jsonStart+jsonEnd])
+	//Remove trailing semicolon if present
+	jsonString = strings.TrimSuffix(jsonString, ";")
+
+	//Parse JSON to extract artist image hash
+	var deezerData map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonString), &deezerData); err != nil {
+		return "", fmt.Errorf("failed to parse Deezer JSON: %w", err)
 	}
 
-	//Filter out placeholder images
-	if strings.Contains(imageURL, "2a96cbd8b46e442fc41c2b86b821562f") ||
-		strings.Contains(imageURL, "c6f59c1e5e7240a4c0d427abd71f3dbb") {
-		return "", fmt.Errorf("only placeholder image available")
+	//Navigate to ARTIST => data => first artist => ART_PICTURE
+	artistSection, ok := deezerData["ARTIST"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("no ARTIST section in Deezer data")
 	}
 
-	log.Printf("Found image: %s\n", imageURL)
+	data, ok := artistSection["data"].([]interface{})
+	if !ok || len(data) == 0 {
+		return "", fmt.Errorf("no artist results found")
+	}
+
+	firstArtist, ok := data[0].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid artist data format")
+	}
+
+	artPicture, ok := firstArtist["ART_PICTURE"].(string)
+	if !ok || artPicture == "" {
+		return "", fmt.Errorf("no artist picture hash found")
+	}
+
+	//Build CDN URL
+	imageURL := fmt.Sprintf("https://cdn-images.dzcdn.net/images/artist/%s/1000x1000-000000-80-0-0.jpg", artPicture)
+
+	log.Printf("Found Deezer image: %s\n", imageURL)
 	return imageURL, nil
 }
 
@@ -335,11 +343,11 @@ func (s *ArtistImageService) GetArtistImage(artistName string) (*CachedImage, er
 	//Not in cache or stale => fetch new image
 	log.Printf("Fetching new image for: %s\n", artistName)
 
-	imageURL, err := s.scrapeLastFmImage(artistName)
+	imageURL, err := s.scrapeDeezerImage(artistName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scrape image: %w", err)
 	}
-	
+
 	imageKey, err := s.uploadImageToMinio(imageURL, artistName)
 	if err != nil {
 		//If upload fails => still cache the original URL
@@ -357,7 +365,7 @@ func (s *ArtistImageService) GetArtistImage(artistName string) (*CachedImage, er
 		ArtistName: artistName,
 		ImageKey:   imageKey,
 		URL:        finalURL,
-		Source:     "last.fm",
+		Source:     "deezer",
 		FetchedAt:  time.Now(),
 	}
 
