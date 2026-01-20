@@ -10,5 +10,4 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/artist-image-service .
 RUN mkdir -p /root/data
-EXPOSE 80
 CMD ["./artist-image-service"]

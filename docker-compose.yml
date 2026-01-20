@@ -21,7 +21,7 @@ services:
   artist-image-service:
     build: .
     ports:
-      - "${PORT}:80"
+      - "${PORT}:${PORT}"
     environment:
       - PORT=${PORT}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
