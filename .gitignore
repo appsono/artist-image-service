@@ -1,0 +1,64 @@
+# Binaries
+artist-image-service
+artist-image-service-*
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+*.coverage
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Data directories - persistent storage
+images/
+!images/.gitkeep
+minio-data/
+data/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# OS specific
+Thumbs.db
+.Spotlight-V100
+.Trashes
