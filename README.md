@@ -1,6 +1,6 @@
 # Artist Profile Picture Service
 
-A Go microservice that scrapes and serves artist profile pictures from Last.fm and other sources. Uses MinIO for object storage and SQLite for metadata management.
+A Go microservice that scrapes and serves artist profile pictures from Deezer. Uses MinIO for object storage and SQLite for metadata management.
 
 This service is used in Sono to fetch and cache artist profile pictures.
 
@@ -145,7 +145,7 @@ The `docker-compose.yml` includes:
 2. Service checks SQLite database for cached metadata
 3. If cached and fresh (<7 days), returns MinIO URL
 4. If not cached or stale:
-   - Scrapes Last.fm artist page for image
+   - Scrapes Deezer artist page for image
    - Downloads image
    - Uploads to MinIO bucket
    - Saves metadata to SQLite
@@ -164,7 +164,6 @@ The `docker-compose.yml` includes:
 - Metadata stored in SQLite with indexed lookups
 - Automatic cleanup of stale cache entries
 - Atomic database operations prevent corruption
-- Filters out Last.fm placeholder images automatically
 
 ## Troubleshooting
 
