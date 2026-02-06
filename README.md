@@ -12,7 +12,7 @@ This service is used in Sono to fetch and cache artist profile pictures.
 
 ## Features
 
-- Scrapes artist images from Last.fm
+- Scrapes artist images from Deezer
 - Docker Compose deployment with MinIO included
 - Automatic cache refresh (7-day TTL)
 - Filters out placeholder images
